@@ -1,6 +1,7 @@
 from torch.autograd import Variable
 import torch.nn as nn
 import torch.nn.functional as F
+import torch.cuda
 import numpy as np
 import h5py
 
@@ -8,13 +9,15 @@ import os
 from torch import cat
 from torch import from_numpy
 
-execfile("loader.py")
+from multiprocessing import Process, Pool
 
-OutPath='test/'
+execfile("gamma_pi0_loader.py")
 
-def objective(params):
+OutPath='outputs_ele_chpi/'
+
+def objective(params, GENERATOR_ID):
 # define the model
-    print params
+    #print params
     #print objective.index_of_call
     #objective.index_of_call+=1
     depth, width = params
@@ -26,6 +29,7 @@ def objective(params):
             self.fc1 = nn.Linear(25 * 25 * 25 + 5 * 5 * 60, width)
             self.fc5 = nn.Linear(width, width)
             self.fc4 = nn.Linear(width, 2)
+            self.dropout = nn.Dropout()
 
         def forward(self, x1, x2):
             x1 = x1.view(-1, 25 * 25 * 25)
@@ -36,6 +40,8 @@ def objective(params):
             x = F.relu(self.fc1(x))
             for _ in range(depth-1):
                 x = F.relu(self.fc5(x))
+
+            x = self.dropout(x)
             x = self.fc4(x)
 
             return x
@@ -58,6 +64,7 @@ def objective(params):
 
 
     loss_history = []
+    epoch_end_relative_error_history = []
 
 
     epoch_num=50
@@ -70,11 +77,11 @@ def objective(params):
     prev_epoch_end_val_loss = 0.0
     epoch_end_val_loss = 0.0
 
-    train_generator.start()
-    train_loader = train_generator.first().generate()
+    #train_generator.start()
+    train_loader = train_generator.generators[GENERATOR_ID].generate()
     
-    val_generator.start()
-    val_loader = val_generator.first().generate()
+    #val_generator.start()
+    val_loader = val_generator.generators[GENERATOR_ID].generate()
     
     running_loss = 0.0
     val_loss = 0.0
@@ -103,19 +110,19 @@ def objective(params):
         if i % 20 == 19:
             running_loss /= 20
             val_loss /= 20
-            print('[%d, %5d] loss: %.10f' %
-                    (i/400 + 1, i%400 + 1, running_loss)),
+            #print('[%d, %5d, %5d] loss: %.10f' %
+            #        (GENERATOR_ID, i/400 + 1, i%400 + 1, running_loss)),
             #for _, data in enumerate(val_loader):
                 #ECAL, HCAL, labels = data
                 #ECAL, HCAL, labels = Variable(from_numpy(ECAL).cuda()), Variable(from_numpy(HCAL).cuda()), Variable(from_numpy(labels).long().cuda())
                 #outputs = net(ECAL, HCAL)
                 #loss = criterion(outputs, labels)
                 #val_loss += loss.data[0]
-            print('    val loss: %.10f' %
-                    (val_loss)),
+            #print('    val loss: %.10f' %
+            #        (val_loss)),
             relative_error = (val_loss-prev_val_loss)/float(val_loss)
-            print('    relative error: %.10f' %
-                    (relative_error)),
+            #print('    relative error: %.10f' %
+            #        (relative_error)),
 
             if(relative_error>0.03 and i!=0):
                 over_break_count+=1
@@ -124,16 +131,18 @@ def objective(params):
             else:
                 over_break_count=0
             
-            print('    over break count: %d' %
-                    (over_break_count))
+            #print('    over break count: %d' %
+            #        (over_break_count))
             
-            loss_history.append([i/400 + 1, i%400 + 1, running_loss, val_loss, relative_error, over_break_count])
+            loss_history.append([GENERATOR_ID, i/400 + 1, i%400 + 1, running_loss, val_loss, relative_error, over_break_count])
             
             if(i % 400==399):
                 epoch_end_val_loss = val_loss
                 epoch_end_relative_error = (epoch_end_val_loss-prev_epoch_end_val_loss)/float(epoch_end_val_loss)
-                print('epoch_end_relative_error: %.10f' %
-                        (epoch_end_relative_error)),
+                print('[%d] epoch_end_relative_error: %.10f' %
+                        (GENERATOR_ID, epoch_end_relative_error)),
+                epoch_end_relative_error_history.append([GENERATOR_ID, i/400 + 1, i%400 + 1, epoch_end_relative_error])
+
                 if(epoch_end_relative_error > -0.005 and i/400!=0):
                     stag_break_count+=1
                     if(stag_break_count>0):
@@ -143,18 +152,22 @@ def objective(params):
                 print('    stag_break_count: %d' %
                         (stag_break_count))
                 prev_epoch_end_val_loss = epoch_end_val_loss
+
+            
             prev_val_loss = val_loss
             running_loss = 0.0
             val_loss = 0.0
         i+=1
 
-    train_generator.hard_stop()
-    val_generator.hard_stop()
+    #train_generator.hard_stop()
+    #val_generator.hard_stop()
         #break;
 
-    loss_history=np.array(loss_history)
-    with h5py.File(OutPath+"loss_history-depth_"+str(depth)+"-width_"+str(width)+".h5", 'w') as loss_file:
+    loss_history = np.array(loss_history)
+    epoch_end_relative_error_history = np.array(epoch_end_relative_error_history)
+    with h5py.File(OutPath+"loss_history-depth_"+str(depth)+"-width_"+str(width)+".h5", 'w') as loss_file, h5py.File(OutPath+"epoch_end_relative_error_history-depth_"+str(depth)+"-width_"+str(width)+".h5", 'w') as epoch_end_relative_error_history_file:
         loss_file.create_dataset("loss", data=loss_history)
+        epoch_end_relative_error_history_file.create_dataset("relative_error", data=epoch_end_relative_error_history)
 
     from torch import save
     save(net.state_dict(), OutPath+"savedmodel_depth_"+str(depth)+"-width_"+str(width))
@@ -166,8 +179,8 @@ def objective(params):
 
     correct = 0
     total = 0
-    test_generator.start()
-    test_loader = test_generator.first().generate()
+    #test_generator.start()
+    test_loader = test_generator.generators[GENERATOR_ID].generate()
     test_count = 0
     for test_index, test_data in enumerate(test_loader):
         test_count += 1
@@ -183,96 +196,121 @@ def objective(params):
 
         if(test_count >= 200):
             break;
-    test_generator.hard_stop()
+    #test_generator.hard_stop()
     print('Accuracy of the network on test images: %f %%' % (
             100 * float(correct) / total))
 
 
 
-    from torch import Tensor
+    #from torch import Tensor
 
-    outputs0=Tensor().cuda()
-    outputs1=Tensor().cuda()
-    outputs2=Tensor().cuda()
-    outputs3=Tensor().cuda()
+    #outputs0=Tensor().cuda()
+    #outputs1=Tensor().cuda()
+    #outputs2=Tensor().cuda()
+    #outputs3=Tensor().cuda()
 
 
 #  separate outputs for training/testing signal/backroung events. 
-    signal_train_generator.start()
-    signal_train_generator_count = 0 
-    signal_train_loader = signal_train_generator.first().generate()
-    for data in signal_train_loader:
-        signal_train_generator_count += 1
-        ECAL, HCAL, labels = data
-        ECAL, HCAL, labels = Variable(from_numpy(ECAL).cuda()), Variable(from_numpy(HCAL).cuda()), from_numpy(labels).long().cuda()
-        outputs0 = cat((outputs0, net(ECAL, HCAL).data))
+    #signal_train_generator.start()
+    #signal_train_generator_count = 0 
+    #signal_train_loader = signal_train_generator.generators[GENERATOR_ID].generate()
+    #for data in signal_train_loader:
+        #signal_train_generator_count += 1
+        #ECAL, HCAL, labels = data
+        #ECAL, HCAL, labels = Variable(from_numpy(ECAL).cuda()), Variable(from_numpy(HCAL).cuda()), from_numpy(labels).long().cuda()
+        #outputs0 = cat((outputs0, net(ECAL, HCAL).data))
 
-        if signal_train_generator_count >= 200:
-            break;
-    signal_train_generator.hard_stop()
+        #if signal_train_generator_count >= 200:
+            #break;
+    #signal_train_generator.hard_stop()
 
-    signal_test_generator.start()
-    signal_test_generator_count = 0 
-    signal_test_loader = signal_test_generator.first().generate()
-    for data in signal_test_loader:
-        signal_test_generator_count += 1
-        ECAL, HCAL, labels = data
-        ECAL, HCAL, labels = Variable(from_numpy(ECAL).cuda()), Variable(from_numpy(HCAL).cuda()), from_numpy(labels).long().cuda()
-        outputs1 = cat((outputs1, net(ECAL, HCAL).data))
+    #signal_test_generator.start()
+    #signal_test_generator_count = 0 
+    #signal_test_loader = signal_test_generator.generators[GENERATOR_ID].generate()
+    #for data in signal_test_loader:
+        #signal_test_generator_count += 1
+        #ECAL, HCAL, labels = data
+        #ECAL, HCAL, labels = Variable(from_numpy(ECAL).cuda()), Variable(from_numpy(HCAL).cuda()), from_numpy(labels).long().cuda()
+        #outputs1 = cat((outputs1, net(ECAL, HCAL).data))
 
-        if signal_test_generator_count >= 100:
-            break;
-    signal_test_generator.hard_stop()
-
-
-    background_train_generator.start()
-    background_train_generator_count = 0 
-    background_train_loader = background_train_generator.first().generate()
-    for data in background_train_loader:
-        background_train_generator_count += 1
-        ECAL, HCAL, labels = data
-        ECAL, HCAL, labels = Variable(from_numpy(ECAL).cuda()), Variable(from_numpy(HCAL).cuda()), from_numpy(labels).long().cuda()
-        outputs2 = cat((outputs2, net(ECAL, HCAL).data))
-        if background_train_generator_count >= 200:
-            break;
-    background_train_generator.hard_stop()
+        #if signal_test_generator_count >= 100:
+            #break;
+    #signal_test_generator.hard_stop()
 
 
-    background_test_generator.start()
-    background_test_generator_count = 0 
-    background_test_loader = background_test_generator.first().generate()
-    for data in background_test_loader:
-        background_test_generator_count += 1
-        ECAL, HCAL, labels = data
-        ECAL, HCAL, labels = Variable(from_numpy(ECAL).cuda()), Variable(from_numpy(HCAL).cuda()), from_numpy(labels).long().cuda()
-        outputs3 = cat((outputs3, net(ECAL, HCAL).data))
+    #background_train_generator.start()
+    #background_train_generator_count = 0 
+    #background_train_loader = background_train_generator.generators[GENERATOR_ID].generate()
+    #for data in background_train_loader:
+        #background_train_generator_count += 1
+        #ECAL, HCAL, labels = data
+        #ECAL, HCAL, labels = Variable(from_numpy(ECAL).cuda()), Variable(from_numpy(HCAL).cuda()), from_numpy(labels).long().cuda()
+        #outputs2 = cat((outputs2, net(ECAL, HCAL).data))
+        #if background_train_generator_count >= 200:
+            #break;
+    #background_train_generator.hard_stop()
 
-        if background_test_generator_count >= 100:
-            break;
-    background_test_generator.hard_stop()
+
+    #background_test_generator.start()
+    #background_test_generator_count = 0 
+    #background_test_loader = background_test_generator.generators[GENERATOR_ID].generate()
+    #for data in background_test_loader:
+        #background_test_generator_count += 1
+        #ECAL, HCAL, labels = data
+        #ECAL, HCAL, labels = Variable(from_numpy(ECAL).cuda()), Variable(from_numpy(HCAL).cuda()), from_numpy(labels).long().cuda()
+        #outputs3 = cat((outputs3, net(ECAL, HCAL).data))
+
+        #if background_test_generator_count >= 100:
+            #break;
+    #background_test_generator.hard_stop()
 
 
-    with h5py.File(OutPath+"out_depth_"+str(depth)+"-width_"+str(width)+"_0.h5", 'w') as o1, h5py.File(OutPath+"out_depth_"+str(depth)+"-width_"+str(width)+"_1.h5", 'w') as o2, h5py.File(OutPath+"out_depth_"+str(depth)+"-width_"+str(width)+"_2.h5", 'w') as o3, h5py.File(OutPath+"out_depth_"+str(depth)+"-width_"+str(width)+"_3.h5", 'w') as o4:
-        o1.create_dataset("output", data=outputs0.cpu().numpy())
-        o2.create_dataset("output", data=outputs1.cpu().numpy())
-        o3.create_dataset("output", data=outputs2.cpu().numpy())
-        o4.create_dataset("output", data=outputs3.cpu().numpy())
+    #with h5py.File(OutPath+"out_depth_"+str(depth)+"-width_"+str(width)+"_0.h5", 'w') as o1, h5py.File(OutPath+"out_depth_"+str(depth)+"-width_"+str(width)+"_1.h5", 'w') as o2, h5py.File(OutPath+"out_depth_"+str(depth)+"-width_"+str(width)+"_2.h5", 'w') as o3, h5py.File(OutPath+"out_depth_"+str(depth)+"-width_"+str(width)+"_3.h5", 'w') as o4:
+        #o1.create_dataset("output", data=outputs0.cpu().numpy())
+        #o2.create_dataset("output", data=outputs1.cpu().numpy())
+        #o3.create_dataset("output", data=outputs2.cpu().numpy())
+        #o4.create_dataset("output", data=outputs3.cpu().numpy())
 
     return (float(correct) / total)*100.0
 
+
+def run(pid):
+    width_min=128
+    width_max=511
+    depth = 5 
+    depth_min = 5 
+    depth_max = 5 
+
+    accuracies = []
+
+    with torch.cuda.device(pid%num_gpus):
+        for width in range(width_min + pid, width_max + 1, num_gen):
+        #import rpdb; rpdb.set_trace()
+            accuracy = objective((depth, width), pid)
+
+            accuracies.append([width, accuracy])
+
+    with h5py.File(OutPath+"accuracies_depth_range_"+str(depth_min)+"-"+str(depth_max)+"_width_range_"+str(width_min)+"-"+str(width_max)+"_"+str(pid)+".h5", 'w') as write_accuracies:
+        write_accuracies.create_dataset('accuracies', data=np.array(accuracies))
+
+
 if __name__ == '__main__':
 
-    width_min=16
-    width_max=128
-
-    depth_min=2
-    depth_max=4
+    num_of_processes = num_gen
 
 
     #objective.index_of_call=0
 
-    _ = objective((2,256))
-    #for d in range(depth_min, depth_max+1):
-        #for w in range(width_min, width_max+1):
-            #OutPath=os.getcwd()+'/'+OutPath
-            #_ = objective(d,w)
+
+    train_generator.start()
+    val_generator.start()
+    test_generator.start()
+
+    worker_pool = Pool(processes=num_of_processes)
+
+    worker_pool.map(run, range(num_of_processes))
+
+
+    train_generator.hard_stop()
+    val_generator.hard_stop()
+    test_generator.hard_stop()

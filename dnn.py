@@ -11,13 +11,13 @@ from torch import from_numpy
 
 from multiprocessing import Process, Pool
 
-execfile("gamma_pi0_loader.py")
+execfile("ele_chpi_loader.py")
 
-OutPath='outputs_ele_chpi/'
+OutPath='test/'
 
 def objective(params, GENERATOR_ID):
 # define the model
-    #print params
+    print params
     #print objective.index_of_call
     #objective.index_of_call+=1
     depth, width = params
@@ -29,7 +29,8 @@ def objective(params, GENERATOR_ID):
             self.fc1 = nn.Linear(25 * 25 * 25 + 5 * 5 * 60, width)
             self.fc5 = nn.Linear(width, width)
             self.fc4 = nn.Linear(width, 2)
-            self.dropout = nn.Dropout()
+            self.norm = nn.BatchNorm1d(width)
+            self.dropout = nn.Dropout(p=0.5)
 
         def forward(self, x1, x2):
             x1 = x1.view(-1, 25 * 25 * 25)
@@ -37,11 +38,26 @@ def objective(params, GENERATOR_ID):
         
             x = cat((x1,x2), 1)
 
-            x = F.relu(self.fc1(x))
-            for _ in range(depth-1):
-                x = F.relu(self.fc5(x))
-
+            x = self.fc1(x)
+            x = self.norm(x)
+            x = F.relu(x)
             x = self.dropout(x)
+            for _ in range(depth-1):
+    #            x = self.fc5(x)
+    #            x = self.norm(x)
+    #            x = F.relu(x)
+    #            x = self.dropout(x)
+                y = self.fc5(x)
+                y = self.norm(y)
+                y = F.relu(y)
+                y = self.fc5(y)
+                y = self.norm(y)
+                y = F.relu(y)
+                #y = self.dropout(y)
+                x = F.relu(self.norm(self.norm(self.fc5(y))+x))
+                x = self.dropout(x)
+
+            #x = self.dropout(x)
             x = self.fc4(x)
 
             return x
@@ -110,19 +126,13 @@ def objective(params, GENERATOR_ID):
         if i % 20 == 19:
             running_loss /= 20
             val_loss /= 20
-            #print('[%d, %5d, %5d] loss: %.10f' %
-            #        (GENERATOR_ID, i/400 + 1, i%400 + 1, running_loss)),
-            #for _, data in enumerate(val_loader):
-                #ECAL, HCAL, labels = data
-                #ECAL, HCAL, labels = Variable(from_numpy(ECAL).cuda()), Variable(from_numpy(HCAL).cuda()), Variable(from_numpy(labels).long().cuda())
-                #outputs = net(ECAL, HCAL)
-                #loss = criterion(outputs, labels)
-                #val_loss += loss.data[0]
-            #print('    val loss: %.10f' %
-            #        (val_loss)),
+            print('[%d, %5d, %5d] loss: %.10f' %
+                    (GENERATOR_ID, i/400 + 1, i%400 + 1, running_loss)),
+            print('    val loss: %.10f' %
+                    (val_loss)),
             relative_error = (val_loss-prev_val_loss)/float(val_loss)
-            #print('    relative error: %.10f' %
-            #        (relative_error)),
+            print('    relative error: %.10f' %
+                    (relative_error)),
 
             if(relative_error>0.03 and i!=0):
                 over_break_count+=1
@@ -131,8 +141,8 @@ def objective(params, GENERATOR_ID):
             else:
                 over_break_count=0
             
-            #print('    over break count: %d' %
-            #        (over_break_count))
+            print('    over break count: %d' %
+                    (over_break_count))
             
             loss_history.append([GENERATOR_ID, i/400 + 1, i%400 + 1, running_loss, val_loss, relative_error, over_break_count])
             
@@ -275,9 +285,9 @@ def objective(params, GENERATOR_ID):
 
 
 def run(pid):
-    width_min=128
+    width_min=256
     width_max=511
-    depth = 5 
+    depth = 30 
     depth_min = 5 
     depth_max = 5 
 

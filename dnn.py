@@ -21,52 +21,65 @@ def objective(params, GENERATOR_ID):
     #print objective.index_of_call
     #objective.index_of_call+=1
     depth, width = params
-    learning_rate=0.001
+    learning_rate=0.00001
     decay_rate=0
-    class Net2(nn.Module):
+    class GRU(nn.Module):
         def __init__(self):
-            super(Net2, self).__init__()
-            self.fc1 = nn.Linear(25 * 25 * 25 + 5 * 5 * 60, width)
-            self.fc5 = nn.Linear(width, width)
-            self.fc4 = nn.Linear(width, 2)
-            self.norm = nn.BatchNorm1d(width)
-            self.dropout = nn.Dropout(p=0.5)
+            super(GRU, self).__init__()
+            self.gru = nn.GRU(input_size=25*25, hidden_size=128, num_layers=1, dropout=0, bidirectional=False)
+            self.dense = nn.Linear(in_features=128, out_features=2)
 
-        def forward(self, x1, x2):
-            x1 = x1.view(-1, 25 * 25 * 25)
-            x2 = x2.view(-1, 5 * 5 * 60)
-        
-            x = cat((x1,x2), 1)
+        def forward(self, input_vector, hidden_state):
+            out, _ = self.gru(input_vector, hidden_state)
 
-            x = self.fc1(x)
-            x = self.norm(x)
-            x = F.relu(x)
-            x = self.dropout(x)
-            for _ in range(depth-1):
-    #            x = self.fc5(x)
-    #            x = self.norm(x)
-    #            x = F.relu(x)
+            output = self.dense(out[-1])
+
+            return output
+    #class Net2(nn.Module):
+    #    def __init__(self):
+    #        super(Net2, self).__init__()
+    #        self.fc1 = nn.Linear(25 * 25 * 25 + 5 * 5 * 60, width)
+    #        self.fc5 = nn.Linear(width, width)
+    #        self.fc4 = nn.Linear(width, 2)
+    #        self.norm = nn.BatchNorm1d(width)
+    #        self.dropout = nn.Dropout(p=0.5)
+
+    #    def forward(self, x1, x2):
+    #        x1 = x1.view(-1, 25 * 25 * 25)
+    #        x2 = x2.view(-1, 5 * 5 * 60)
+    #    
+    #        x = cat((x1,x2), 1)
+
+    #        x = self.fc1(x)
+    #        x = self.norm(x)
+    #        x = F.relu(x)
+    #        x = self.dropout(x)
+    #        for _ in range(depth-1):
+    ##            x = self.fc5(x)
+    ##            x = self.norm(x)
+    ##            x = F.relu(x)
+    ##            x = self.dropout(x)
+    #            y = self.fc5(x)
+    #            y = self.norm(y)
+    #            y = F.relu(y)
+    #            y = self.fc5(y)
+    #            y = self.norm(y)
+    #            y = F.relu(y)
+    #            #y = self.dropout(y)
+    #            x = F.relu(self.norm(self.norm(self.fc5(y))+x))
     #            x = self.dropout(x)
-                y = self.fc5(x)
-                y = self.norm(y)
-                y = F.relu(y)
-                y = self.fc5(y)
-                y = self.norm(y)
-                y = F.relu(y)
-                #y = self.dropout(y)
-                x = F.relu(self.norm(self.norm(self.fc5(y))+x))
-                x = self.dropout(x)
 
-            #x = self.dropout(x)
-            x = self.fc4(x)
+    #        #x = self.dropout(x)
+    #        x = self.fc4(x)
 
-            return x
+    #        return x
 
 
     from torch import load
 
     #net = nn.DataParallel(Net2())
-    net = Net2()
+    #net = Net2()
+    net = GRU()
 
 # load previous model
     #net.load_state_dict(load("../Downsampled_GammaPi0_1_merged_nn_outputs/savedmodel_32-6_lr-0.0002_dr-0_10-15"))
@@ -106,10 +119,14 @@ def objective(params, GENERATOR_ID):
     for train_data, val_data in itertools.izip(train_loader, val_loader):
         #inputs, labels = data
         #ECAL, HCAL, labels = Variable(inputs[0].cuda()), Variable(inputs[1].cuda()), Variable(labels.cuda())
-        ECAL, HCAL, labels = train_data
-        ECAL, HCAL, labels = Variable(from_numpy(ECAL).cuda()), Variable(from_numpy(HCAL).cuda()), Variable(from_numpy(labels).long().cuda())
+        ECAL, _, labels = train_data
+        ECAL = np.swapaxes(ECAL,1,3)
+        ECAL = ECAL.reshape(1000, 25, 25*25)
+        ECAL = np.swapaxes(ECAL, 0, 1)
+        ECAL, labels = Variable(from_numpy(ECAL).cuda()), Variable(from_numpy(labels).long().cuda())
+        h0 = Variable(torch.zeros(1, 1000, 128).cuda())
         optimizer.zero_grad()
-        outputs = net(ECAL, HCAL)
+        outputs = net(ECAL, h0)
         loss = criterion(outputs, labels)
         loss.backward()
         optimizer.step()
@@ -117,9 +134,13 @@ def objective(params, GENERATOR_ID):
 
 
 
-        ECAL, HCAL, labels = val_data
-        ECAL, HCAL, labels = Variable(from_numpy(ECAL).cuda()), Variable(from_numpy(HCAL).cuda()), Variable(from_numpy(labels).long().cuda())
-        val_outputs = net(ECAL, HCAL)
+        ECAL, _, labels = val_data
+        ECAL = np.swapaxes(ECAL,1,3)
+        ECAL = ECAL.reshape(1000, 25, 25*25)
+        ECAL = np.swapaxes(ECAL, 0, 1)
+        ECAL, labels = Variable(from_numpy(ECAL).cuda()), Variable(from_numpy(labels).long().cuda())
+        #h0 = Variable(torch.zeros(1, 1000, 256))
+        val_outputs = net(ECAL, h0)
         validation_loss = criterion(val_outputs, labels)
         val_loss += validation_loss.data[0]
 
@@ -134,7 +155,7 @@ def objective(params, GENERATOR_ID):
             print('    relative error: %.10f' %
                     (relative_error)),
 
-            if(relative_error>0.03 and i!=0):
+            if(relative_error>100.0 and i!=0):
                 over_break_count+=1
                 if(over_break_count>2):
                     break
@@ -153,7 +174,7 @@ def objective(params, GENERATOR_ID):
                         (GENERATOR_ID, epoch_end_relative_error)),
                 epoch_end_relative_error_history.append([GENERATOR_ID, i/400 + 1, i%400 + 1, epoch_end_relative_error])
 
-                if(epoch_end_relative_error > -0.005 and i/400!=0):
+                if(epoch_end_relative_error > 100.0 and i/400!=0):
                     stag_break_count+=1
                     if(stag_break_count>0):
                         break
@@ -197,9 +218,13 @@ def objective(params, GENERATOR_ID):
         #images, labels = data
         #ECAL, HCAL, labels = Variable(images[0].cuda()), Variable(images[1].cuda()), labels.cuda()
         #outputs = net(ECAL, HCAL)
-        ECAL, HCAL, labels = test_data
-        ECAL, HCAL, labels = Variable(from_numpy(ECAL).cuda()), Variable(from_numpy(HCAL).cuda()), from_numpy(labels).long().cuda()
-        outputs = net(ECAL, HCAL)
+        ECAL, _, labels = test_data
+        ECAL = np.swapaxes(ECAL,1,3)
+        ECAL = ECAL.reshape(1000, 25, 25*25)
+        ECAL = np.swapaxes(ECAL, 0, 1)
+        ECAL, labels = Variable(from_numpy(ECAL).cuda()), Variable(from_numpy(labels).long().cuda())
+        h0 = Variable(torch.zeros(1, 1000, 128).cuda())
+        outputs = net(ECAL, h0)
         _, predicted = max(outputs.data, 1)
         total += labels.size(0)
         correct += (predicted == labels).sum()
@@ -314,13 +339,13 @@ if __name__ == '__main__':
 
     train_generator.start()
     val_generator.start()
-    test_generator.start()
+    #test_generator.start()
 
-    worker_pool = Pool(processes=num_of_processes)
-
-    worker_pool.map(run, range(num_of_processes))
+    #worker_pool = Pool(processes=num_of_processes)
+    accuracy = objective((4, 10), 0)
+    #worker_pool.map(run, range(num_of_processes))
 
 
     train_generator.hard_stop()
     val_generator.hard_stop()
-    test_generator.hard_stop()
+    #test_generator.hard_stop()

@@ -79,7 +79,7 @@ num_gpus = 10
 num_gen = 1
 readers_per_gen = 10
 
-num_readers=min(num_gen*readers_per_gen, 16)
+num_readers=min(num_gen*readers_per_gen, 20)
 
 val_generator = H5FileDataProvider(val, batch_size=batch_size, n_readers=num_readers, q_multipler = 4, read_multiplier = 1, make_class_index=True, sleep_duration=1, wrap_examples=True, max_samples=10000, n_generators=num_gen)
 #val_generator = H5FileDataProvider(val, max=20, batch_size=batch_size, n_readers=30, q_multipler = 2, read_multiplier = 1, make_class_index=True, sleep_duration=1, wrap_examples=True, n_generators=2)

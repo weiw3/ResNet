@@ -21,7 +21,7 @@ def objective(params, GENERATOR_ID):
     #print objective.index_of_call
     #objective.index_of_call+=1
     depth, width = params
-    learning_rate=0.00001
+    learning_rate=0.0001
     decay_rate=0
     class GRU(nn.Module):
         def __init__(self):
@@ -32,7 +32,7 @@ def objective(params, GENERATOR_ID):
         def forward(self, input_vector, hidden_state):
             out, _ = self.gru(input_vector, hidden_state)
 
-            output = self.dense(out[-1])
+            output = F.softmax(self.dense(out[-1]))
 
             return output
     #class Net2(nn.Module):

@@ -21,65 +21,86 @@ def objective(params, GENERATOR_ID):
     #print objective.index_of_call
     #objective.index_of_call+=1
     depth, width = params
-    learning_rate=0.0001
-    decay_rate=0
-    class GRU(nn.Module):
+    learning_rate=0.001
+    decay_rate=0.0001
+
+    class Net2(nn.Module):
         def __init__(self):
-            super(GRU, self).__init__()
-            self.gru = nn.GRU(input_size=25*25, hidden_size=128, num_layers=1, dropout=0, bidirectional=False)
-            self.dense = nn.Linear(in_features=128, out_features=2)
+            super(Net2, self).__init__()
+            self.conv0 = nn.Conv3d(1, 64, 3, stride=1)
+            self.norm0 = nn.BatchNorm3d(64)
+            self.conv00 = nn.Conv3d(64, 64, 3, stride=1)
+            self.conv1 = nn.Conv3d(64, 128, 3, stride=2)
+            self.norm1 = nn.BatchNorm3d(128)
+            self.conv11 = nn.Conv3d(128, 128, 3, stride=1)
+            self.conv2 = nn.Conv3d(128, 256, 3, stride=2)
+            self.norm2 = nn.BatchNorm3d(256)
+            self.conv22 = nn.Conv3d(256, 256, 3, stride=1)
+            self.conv3 = nn.Conv3d(128, 256, 3, stride=1)
+            self.norm3 = nn.BatchNorm3d(256)
+            self.conv4 = nn.Conv3d(256, 512, 3, stride=1)
+            self.norm4 = nn.BatchNorm3d(width)
+            self.conv5 = nn.Conv3d(width, width, 3, stride=1)
+            self.fc1 = nn.Linear(width, width)
+            self.fc2 = nn.Linear(width, 2)
+            self.norm = nn.BatchNorm1d(width)
+            #self.dropout = nn.Dropout(p=0.5)
 
-        def forward(self, input_vector, hidden_state):
-            out, _ = self.gru(input_vector, hidden_state)
+        def forward(self, x1):
+            x = x1.view(-1, 1, 25, 25, 25)
+            #x2 = x2.view(-1, 5 * 5 * 60)
+        
+            #x = cat((x1,x2), 1)
 
-            output = F.softmax(self.dense(out[-1]))
-
-            return output
-    #class Net2(nn.Module):
-    #    def __init__(self):
-    #        super(Net2, self).__init__()
-    #        self.fc1 = nn.Linear(25 * 25 * 25 + 5 * 5 * 60, width)
-    #        self.fc5 = nn.Linear(width, width)
-    #        self.fc4 = nn.Linear(width, 2)
-    #        self.norm = nn.BatchNorm1d(width)
-    #        self.dropout = nn.Dropout(p=0.5)
-
-    #    def forward(self, x1, x2):
-    #        x1 = x1.view(-1, 25 * 25 * 25)
-    #        x2 = x2.view(-1, 5 * 5 * 60)
-    #    
-    #        x = cat((x1,x2), 1)
-
-    #        x = self.fc1(x)
-    #        x = self.norm(x)
-    #        x = F.relu(x)
-    #        x = self.dropout(x)
-    #        for _ in range(depth-1):
-    ##            x = self.fc5(x)
-    ##            x = self.norm(x)
-    ##            x = F.relu(x)
-    ##            x = self.dropout(x)
-    #            y = self.fc5(x)
-    #            y = self.norm(y)
-    #            y = F.relu(y)
-    #            y = self.fc5(y)
-    #            y = self.norm(y)
-    #            y = F.relu(y)
-    #            #y = self.dropout(y)
-    #            x = F.relu(self.norm(self.norm(self.fc5(y))+x))
+            x = self.conv0(x)
+            x = F.relu(self.norm0(x))
+            x = self.conv00(x)
+            x = F.relu(self.norm0(x))
+            x = self.conv00(x)
+            x = F.relu(self.norm0(x))
+            x = self.conv1(x)
+            x = F.relu(self.norm1(x))
+            x = self.conv11(x)
+            x = F.relu(self.norm1(x))
+            x = self.conv2(x)
+            x = F.relu(self.norm2(x))
+            x = self.conv22(x)
+            x = F.relu(self.norm2(x))
+         
+            x = x.view(-1, 256)
+            x = self.norm(x)
+            x = F.relu(x)
+            x = self.fc1(x)
+            x = self.norm(x)
+            x = F.relu(x)
+            x = self.fc2(x)
+            x = F.softmax(x)
+            #for _ in range(depth-1):
+    #            x = self.fc5(x)
+    #            x = self.norm(x)
+    #            x = F.relu(x)
     #            x = self.dropout(x)
+            #    y = self.fc5(x)
+            #    y = self.norm(y)
+            #    y = F.relu(y)
+            #    y = self.fc5(y)
+            #    y = self.norm(y)
+            #    y = F.relu(y)
+            #    #y = self.dropout(y)
+            #    x = F.relu(self.norm(self.norm(self.fc5(y))+x))
+            #   x = self.dropout(x)
 
-    #        #x = self.dropout(x)
-    #        x = self.fc4(x)
+           ##x = self.dropout(x)
+            #x = self.fc4(x)
 
-    #        return x
+            return x
 
 
     from torch import load
 
     #net = nn.DataParallel(Net2())
-    #net = Net2()
-    net = GRU()
+    net = Net2()
+    #net = GRU()
 
 # load previous model
     #net.load_state_dict(load("../Downsampled_GammaPi0_1_merged_nn_outputs/savedmodel_32-6_lr-0.0002_dr-0_10-15"))
@@ -87,9 +108,11 @@ def objective(params, GENERATOR_ID):
     net.cuda()
 
     import torch.optim as optim
+    from torch.optim.lr_scheduler import ReduceLROnPlateau
 
     criterion = nn.CrossEntropyLoss().cuda()
     optimizer = optim.Adam(net.parameters(), lr=learning_rate, weight_decay=decay_rate)
+    scheduler = ReduceLROnPlateau(optimizer, 'min', verbose=True)
 
 
     loss_history = []
@@ -102,7 +125,7 @@ def objective(params, GENERATOR_ID):
 # main process for training
     prev_val_loss = 0.0
     stag_break_count = 0
-    over_break_count = 0
+    early_stop_count = 0
     prev_epoch_end_val_loss = 0.0
     epoch_end_val_loss = 0.0
 
@@ -121,12 +144,9 @@ def objective(params, GENERATOR_ID):
         #ECAL, HCAL, labels = Variable(inputs[0].cuda()), Variable(inputs[1].cuda()), Variable(labels.cuda())
         ECAL, _, labels = train_data
         ECAL = np.swapaxes(ECAL,1,3)
-        ECAL = ECAL.reshape(1000, 25, 25*25)
-        ECAL = np.swapaxes(ECAL, 0, 1)
         ECAL, labels = Variable(from_numpy(ECAL).cuda()), Variable(from_numpy(labels).long().cuda())
-        h0 = Variable(torch.zeros(1, 1000, 128).cuda())
         optimizer.zero_grad()
-        outputs = net(ECAL, h0)
+        outputs = net(ECAL)
         loss = criterion(outputs, labels)
         loss.backward()
         optimizer.step()
@@ -136,11 +156,8 @@ def objective(params, GENERATOR_ID):
 
         ECAL, _, labels = val_data
         ECAL = np.swapaxes(ECAL,1,3)
-        ECAL = ECAL.reshape(1000, 25, 25*25)
-        ECAL = np.swapaxes(ECAL, 0, 1)
         ECAL, labels = Variable(from_numpy(ECAL).cuda()), Variable(from_numpy(labels).long().cuda())
-        #h0 = Variable(torch.zeros(1, 1000, 256))
-        val_outputs = net(ECAL, h0)
+        val_outputs = net(ECAL)
         validation_loss = criterion(val_outputs, labels)
         val_loss += validation_loss.data[0]
 
@@ -148,33 +165,34 @@ def objective(params, GENERATOR_ID):
             running_loss /= 20
             val_loss /= 20
             print('[%d, %5d, %5d] loss: %.10f' %
-                    (GENERATOR_ID, i/400 + 1, i%400 + 1, running_loss)),
+                    (GENERATOR_ID, i/4000 + 1, i%4000 + 1, running_loss)),
             print('    val loss: %.10f' %
                     (val_loss)),
             relative_error = (val_loss-prev_val_loss)/float(val_loss)
             print('    relative error: %.10f' %
                     (relative_error)),
 
-            if(relative_error>100.0 and i!=0):
-                over_break_count+=1
-                if(over_break_count>2):
+            scheduler.step(val_loss)
+            if(relative_error>0.01 and i!=0):
+                early_stop_count+=1
+                if(early_stop_count>1):
                     break
             else:
-                over_break_count=0
+                early_stop_count=0
             
-            print('    over break count: %d' %
-                    (over_break_count))
+            print('    early stop count: %d' %
+                    (early_stop_count))
             
-            loss_history.append([GENERATOR_ID, i/400 + 1, i%400 + 1, running_loss, val_loss, relative_error, over_break_count])
+            loss_history.append([GENERATOR_ID, i/4000 + 1, i%4000 + 1, running_loss, val_loss, relative_error, early_stop_count])
             
             if(i % 400==399):
                 epoch_end_val_loss = val_loss
                 epoch_end_relative_error = (epoch_end_val_loss-prev_epoch_end_val_loss)/float(epoch_end_val_loss)
                 print('[%d] epoch_end_relative_error: %.10f' %
                         (GENERATOR_ID, epoch_end_relative_error)),
-                epoch_end_relative_error_history.append([GENERATOR_ID, i/400 + 1, i%400 + 1, epoch_end_relative_error])
+                epoch_end_relative_error_history.append([GENERATOR_ID, i/4000 + 1, i%4000 + 1, epoch_end_relative_error])
 
-                if(epoch_end_relative_error > 100.0 and i/400!=0):
+                if(epoch_end_relative_error > -0.005 and i/4000!=0):
                     stag_break_count+=1
                     if(stag_break_count>0):
                         break
@@ -220,16 +238,13 @@ def objective(params, GENERATOR_ID):
         #outputs = net(ECAL, HCAL)
         ECAL, _, labels = test_data
         ECAL = np.swapaxes(ECAL,1,3)
-        ECAL = ECAL.reshape(1000, 25, 25*25)
-        ECAL = np.swapaxes(ECAL, 0, 1)
         ECAL, labels = Variable(from_numpy(ECAL).cuda()), Variable(from_numpy(labels).long().cuda())
-        h0 = Variable(torch.zeros(1, 1000, 128).cuda())
-        outputs = net(ECAL, h0)
+        outputs = net(ECAL)
         _, predicted = max(outputs.data, 1)
         total += labels.size(0)
         correct += (predicted == labels).sum()
 
-        if(test_count >= 200):
+        if(test_count >= 2000):
             break;
     #test_generator.hard_stop()
     print('Accuracy of the network on test images: %f %%' % (
@@ -339,13 +354,13 @@ if __name__ == '__main__':
 
     train_generator.start()
     val_generator.start()
-    #test_generator.start()
+    test_generator.start()
 
     #worker_pool = Pool(processes=num_of_processes)
-    accuracy = objective((4, 10), 0)
+    accuracy = objective((14, 256), 0)
     #worker_pool.map(run, range(num_of_processes))
 
 
     train_generator.hard_stop()
     val_generator.hard_stop()
-    #test_generator.hard_stop()
+    test_generator.hard_stop()

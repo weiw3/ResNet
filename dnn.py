@@ -21,8 +21,8 @@ def objective(params, GENERATOR_ID):
     #print objective.index_of_call
     #objective.index_of_call+=1
     depth, width = params
-    learning_rate=0.001
-    decay_rate=0.0001
+    learning_rate=1.0e-4
+    decay_rate=1.0e-6
 
     class Net2(nn.Module):
         def __init__(self):
@@ -103,7 +103,7 @@ def objective(params, GENERATOR_ID):
     #net = GRU()
 
 # load previous model
-    #net.load_state_dict(load("../Downsampled_GammaPi0_1_merged_nn_outputs/savedmodel_32-6_lr-0.0002_dr-0_10-15"))
+    net.load_state_dict(load("test/savedmodel_depth_13-width_256"))
 
     net.cuda()
 
@@ -111,8 +111,9 @@ def objective(params, GENERATOR_ID):
     from torch.optim.lr_scheduler import ReduceLROnPlateau
 
     criterion = nn.CrossEntropyLoss().cuda()
-    optimizer = optim.Adam(net.parameters(), lr=learning_rate, weight_decay=decay_rate)
-    scheduler = ReduceLROnPlateau(optimizer, 'min', verbose=True)
+    optimizer = optim.SGD(net.parameters(), lr=learning_rate, weight_decay=decay_rate, momentum=0.9)
+    #optimizer = optim.Adam(net.parameters(), lr=learning_rate, weight_decay=decay_rate)
+    scheduler = ReduceLROnPlateau(optimizer, 'min', verbose=True, min_lr=1.0e-6, patience=5, factor=0.5, threshold = 0.001)
 
 
     loss_history = []
@@ -172,10 +173,12 @@ def objective(params, GENERATOR_ID):
             print('    relative error: %.10f' %
                     (relative_error)),
 
+            #if(val_loss < 0.37):
+             #   break
             scheduler.step(val_loss)
             if(relative_error>0.01 and i!=0):
                 early_stop_count+=1
-                if(early_stop_count>1):
+                if(early_stop_count>3):
                     break
             else:
                 early_stop_count=0
@@ -238,7 +241,7 @@ def objective(params, GENERATOR_ID):
         #outputs = net(ECAL, HCAL)
         ECAL, _, labels = test_data
         ECAL = np.swapaxes(ECAL,1,3)
-        ECAL, labels = Variable(from_numpy(ECAL).cuda()), Variable(from_numpy(labels).long().cuda())
+        ECAL, labels = Variable(from_numpy(ECAL).cuda()), from_numpy(labels).long().cuda()
         outputs = net(ECAL)
         _, predicted = max(outputs.data, 1)
         total += labels.size(0)
@@ -357,7 +360,7 @@ if __name__ == '__main__':
     test_generator.start()
 
     #worker_pool = Pool(processes=num_of_processes)
-    accuracy = objective((14, 256), 0)
+    accuracy = objective((12, 256), 0)
     #worker_pool.map(run, range(num_of_processes))
 
 

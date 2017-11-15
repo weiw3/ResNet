@@ -21,24 +21,25 @@ def objective(params, GENERATOR_ID):
     #print objective.index_of_call
     #objective.index_of_call+=1
     depth, width = params
-    learning_rate=1.0e-4
-    decay_rate=1.0e-6
+    learning_rate=1.0e-3
+    decay_rate=0.0e-6
 
     class Net2(nn.Module):
         def __init__(self):
             super(Net2, self).__init__()
-            self.conv0 = nn.Conv3d(1, 64, 3, stride=1)
+            self.conv0 = nn.Conv3d(1, 64, 3, stride=1, padding=1)
             self.norm0 = nn.BatchNorm3d(64)
-            self.conv00 = nn.Conv3d(64, 64, 3, stride=1)
+            self.conv00 = nn.Conv3d(64, 64, 3, stride=1, padding=1)
             self.conv1 = nn.Conv3d(64, 128, 3, stride=2)
             self.norm1 = nn.BatchNorm3d(128)
-            self.conv11 = nn.Conv3d(128, 128, 3, stride=1)
-            self.conv2 = nn.Conv3d(128, 256, 3, stride=2)
+            self.conv11 = nn.Conv3d(128, 128, 3, stride=1, padding=1)
+            self.conv2 = nn.Conv3d(128, 256, 3, stride=2, padding=1)
             self.norm2 = nn.BatchNorm3d(256)
-            self.conv22 = nn.Conv3d(256, 256, 3, stride=1)
-            self.conv3 = nn.Conv3d(128, 256, 3, stride=1)
-            self.norm3 = nn.BatchNorm3d(256)
-            self.conv4 = nn.Conv3d(256, 512, 3, stride=1)
+            self.conv22 = nn.Conv3d(256, 256, 3, stride=1, padding=1)
+            self.conv3 = nn.Conv3d(256, 512, 3, stride=2, padding=1)
+            self.norm3 = nn.BatchNorm3d(512)
+            self.conv33 = nn.Conv3d(512, 512, 3, stride=1, padding=1)
+            self.conv4 = nn.Conv3d(512, 1024, 3, stride=1)
             self.norm4 = nn.BatchNorm3d(width)
             self.conv5 = nn.Conv3d(width, width, 3, stride=1)
             self.fc1 = nn.Linear(width, width)
@@ -54,20 +55,39 @@ def objective(params, GENERATOR_ID):
 
             x = self.conv0(x)
             x = F.relu(self.norm0(x))
-            x = self.conv00(x)
-            x = F.relu(self.norm0(x))
-            x = self.conv00(x)
-            x = F.relu(self.norm0(x))
+
+            for _ in range(6):
+                y = self.conv00(x)
+                y = F.relu(self.norm0(y))
+                y = self.conv00(y)
+                x = F.relu(self.norm0(y)+x)
+
+
             x = self.conv1(x)
             x = F.relu(self.norm1(x))
-            x = self.conv11(x)
-            x = F.relu(self.norm1(x))
+
+            for _ in range(6):
+                y = self.conv11(x)
+                y = F.relu(self.norm1(y))
+                y = self.conv11(y)
+                x = F.relu(self.norm1(y)+x)
+
             x = self.conv2(x)
             x = F.relu(self.norm2(x))
-            x = self.conv22(x)
-            x = F.relu(self.norm2(x))
+
+            for _ in range(6):
+                y = self.conv22(x)
+                y = F.relu(self.norm2(y))
+                y = self.conv22(y)
+                x = F.relu(self.norm2(y)+x)
          
-            x = x.view(-1, 256)
+            x = self.conv3(x)
+            x = F.relu(self.norm3(x))
+
+            x = self.conv4(x)
+            #x = F.relu(self.norm4(x))
+
+            x = x.view(-1, 1024)
             x = self.norm(x)
             x = F.relu(x)
             x = self.fc1(x)
@@ -98,12 +118,12 @@ def objective(params, GENERATOR_ID):
 
     from torch import load
 
-    #net = nn.DataParallel(Net2())
-    net = Net2()
+    net = nn.DataParallel(Net2(), device_ids=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+    #net = Net2()
     #net = GRU()
 
 # load previous model
-    net.load_state_dict(load("test/savedmodel_depth_13-width_256"))
+    #net.load_state_dict(load("test/savedmodel_depth_13-width_256"))
 
     net.cuda()
 
@@ -111,9 +131,9 @@ def objective(params, GENERATOR_ID):
     from torch.optim.lr_scheduler import ReduceLROnPlateau
 
     criterion = nn.CrossEntropyLoss().cuda()
-    optimizer = optim.SGD(net.parameters(), lr=learning_rate, weight_decay=decay_rate, momentum=0.9)
-    #optimizer = optim.Adam(net.parameters(), lr=learning_rate, weight_decay=decay_rate)
-    scheduler = ReduceLROnPlateau(optimizer, 'min', verbose=True, min_lr=1.0e-6, patience=5, factor=0.5, threshold = 0.001)
+    #optimizer = optim.SGD(net.parameters(), lr=learning_rate, weight_decay=decay_rate, momentum=0.9)
+    optimizer = optim.Adam(net.parameters(), lr=learning_rate, weight_decay=decay_rate)
+    scheduler = ReduceLROnPlateau(optimizer, 'min', verbose=True, min_lr=1.0e-5, patience=10, factor=0.1, threshold = 1.0e-4)
 
 
     loss_history = []
@@ -173,12 +193,12 @@ def objective(params, GENERATOR_ID):
             print('    relative error: %.10f' %
                     (relative_error)),
 
-            #if(val_loss < 0.37):
-             #   break
+            if(val_loss < 0.36):
+                break
             scheduler.step(val_loss)
             if(relative_error>0.01 and i!=0):
                 early_stop_count+=1
-                if(early_stop_count>3):
+                if(early_stop_count>5):
                     break
             else:
                 early_stop_count=0
@@ -188,24 +208,24 @@ def objective(params, GENERATOR_ID):
             
             loss_history.append([GENERATOR_ID, i/4000 + 1, i%4000 + 1, running_loss, val_loss, relative_error, early_stop_count])
             
-            if(i % 400==399):
-                epoch_end_val_loss = val_loss
-                epoch_end_relative_error = (epoch_end_val_loss-prev_epoch_end_val_loss)/float(epoch_end_val_loss)
-                print('[%d] epoch_end_relative_error: %.10f' %
-                        (GENERATOR_ID, epoch_end_relative_error)),
-                epoch_end_relative_error_history.append([GENERATOR_ID, i/4000 + 1, i%4000 + 1, epoch_end_relative_error])
+          #  if(i % 400==399):
+          #      epoch_end_val_loss = val_loss
+          #      epoch_end_relative_error = (epoch_end_val_loss-prev_epoch_end_val_loss)/float(epoch_end_val_loss)
+          #      print('[%d] epoch_end_relative_error: %.10f' %
+          #              (GENERATOR_ID, epoch_end_relative_error)),
+          #      epoch_end_relative_error_history.append([GENERATOR_ID, i/4000 + 1, i%4000 + 1, epoch_end_relative_error])
 
-                if(epoch_end_relative_error > -0.005 and i/4000!=0):
-                    stag_break_count+=1
-                    if(stag_break_count>0):
-                        break
-                else:
-                    stag_break_count=0
-                print('    stag_break_count: %d' %
-                        (stag_break_count))
-                prev_epoch_end_val_loss = epoch_end_val_loss
+          #      if(epoch_end_relative_error > -0.005 and i/4000!=0):
+          #          stag_break_count+=1
+          #          if(stag_break_count>0):
+          #              break
+          #      else:
+          #          stag_break_count=0
+          #      print('    stag_break_count: %d' %
+          #              (stag_break_count))
+          #      prev_epoch_end_val_loss = epoch_end_val_loss
 
-            
+          #  
             prev_val_loss = val_loss
             running_loss = 0.0
             val_loss = 0.0
@@ -247,7 +267,7 @@ def objective(params, GENERATOR_ID):
         total += labels.size(0)
         correct += (predicted == labels).sum()
 
-        if(test_count >= 2000):
+        if(test_count >= 800):
             break;
     #test_generator.hard_stop()
     print('Accuracy of the network on test images: %f %%' % (
@@ -360,7 +380,7 @@ if __name__ == '__main__':
     test_generator.start()
 
     #worker_pool = Pool(processes=num_of_processes)
-    accuracy = objective((12, 256), 0)
+    accuracy = objective((12, 1024), 0)
     #worker_pool.map(run, range(num_of_processes))
 
 

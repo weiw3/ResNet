@@ -21,7 +21,7 @@ def objective(params, GENERATOR_ID):
     #print objective.index_of_call
     #objective.index_of_call+=1
     depth, width = params
-    learning_rate=1.0e-3
+    learning_rate=1.0e-5
     decay_rate=0.0e-6
 
     class Net2(nn.Module):
@@ -123,7 +123,7 @@ def objective(params, GENERATOR_ID):
     #net = GRU()
 
 # load previous model
-    #net.load_state_dict(load("test/savedmodel_depth_13-width_256"))
+    net.load_state_dict(load("test/savedmodel_depth_12-width_1024"))
 
     net.cuda()
 
@@ -193,7 +193,7 @@ def objective(params, GENERATOR_ID):
             print('    relative error: %.10f' %
                     (relative_error)),
 
-            if(val_loss < 0.36):
+            if(val_loss < 0.35):
                 break
             scheduler.step(val_loss)
             if(relative_error>0.01 and i!=0):
@@ -380,7 +380,7 @@ if __name__ == '__main__':
     test_generator.start()
 
     #worker_pool = Pool(processes=num_of_processes)
-    accuracy = objective((12, 1024), 0)
+    accuracy = objective((22, 1024), 0)
     #worker_pool.map(run, range(num_of_processes))
 
 

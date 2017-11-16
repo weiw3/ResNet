@@ -94,7 +94,7 @@ def objective(params, GENERATOR_ID):
             x = self.norm(x)
             x = F.relu(x)
             x = self.fc2(x)
-            x = F.softmax(x)
+            #x = F.softmax(x)
             #for _ in range(depth-1):
     #            x = self.fc5(x)
     #            x = self.norm(x)
@@ -123,7 +123,7 @@ def objective(params, GENERATOR_ID):
     #net = GRU()
 
 # load previous model
-    net.load_state_dict(load("test/savedmodel_depth_12-width_1024"))
+    net.load_state_dict(load("test/savedmodel_depth_22-width_1024"))
 
     net.cuda()
 
@@ -186,14 +186,14 @@ def objective(params, GENERATOR_ID):
             running_loss /= 20
             val_loss /= 20
             print('[%d, %5d, %5d] loss: %.10f' %
-                    (GENERATOR_ID, i/4000 + 1, i%4000 + 1, running_loss)),
+                    (GENERATOR_ID, i/1600 + 1, i%1600 + 1, running_loss)),
             print('    val loss: %.10f' %
                     (val_loss)),
             relative_error = (val_loss-prev_val_loss)/float(val_loss)
             print('    relative error: %.10f' %
                     (relative_error)),
 
-            if(val_loss < 0.35):
+            if(i/1600 >= 10):
                 break
             scheduler.step(val_loss)
             if(relative_error>0.01 and i!=0):
@@ -206,16 +206,16 @@ def objective(params, GENERATOR_ID):
             print('    early stop count: %d' %
                     (early_stop_count))
             
-            loss_history.append([GENERATOR_ID, i/4000 + 1, i%4000 + 1, running_loss, val_loss, relative_error, early_stop_count])
+            loss_history.append([GENERATOR_ID, i/1600 + 1, i%1600 + 1, running_loss, val_loss, relative_error, early_stop_count])
             
           #  if(i % 400==399):
           #      epoch_end_val_loss = val_loss
           #      epoch_end_relative_error = (epoch_end_val_loss-prev_epoch_end_val_loss)/float(epoch_end_val_loss)
           #      print('[%d] epoch_end_relative_error: %.10f' %
           #              (GENERATOR_ID, epoch_end_relative_error)),
-          #      epoch_end_relative_error_history.append([GENERATOR_ID, i/4000 + 1, i%4000 + 1, epoch_end_relative_error])
+          #      epoch_end_relative_error_history.append([GENERATOR_ID, i/1600 + 1, i%1600 + 1, epoch_end_relative_error])
 
-          #      if(epoch_end_relative_error > -0.005 and i/4000!=0):
+          #      if(epoch_end_relative_error > -0.005 and i/1600!=0):
           #          stag_break_count+=1
           #          if(stag_break_count>0):
           #              break
@@ -380,7 +380,7 @@ if __name__ == '__main__':
     test_generator.start()
 
     #worker_pool = Pool(processes=num_of_processes)
-    accuracy = objective((22, 1024), 0)
+    accuracy = objective((43, 1024), 0)
     #worker_pool.map(run, range(num_of_processes))
 
 

@@ -72,7 +72,7 @@ train=[
         ['/data/LCD/V2/DownsampledNormalizedGammaPi0MergingSize1Float_COPY/Pi0Escan/Pi0Escan_29.h5', ['ECAL', 'HCAL'], 'pi0', 1],
         ]
 
-batch_size = 100
+batch_size = 1000
 
 num_gpus = 10
 

@@ -110,11 +110,12 @@ def objective(params, GENERATOR_ID):
 
     from torch import load
 
-    #net = nn.DataParallel(Net2(), device_ids=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
-    net = ResNet()
+    net = nn.DataParallel(ResNet(), device_ids=[0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+    #net = ResNet()
 
 # load previous model
-    #net.load_state_dict(load("test/savedmodel_depth_12-width_256"))
+    
+    #net.load_state_dict(load("test/savedmodel_depth_14-width_256"))
 
     net.cuda()
 
@@ -186,7 +187,7 @@ def objective(params, GENERATOR_ID):
             print('    relative error: %.10f' %
                     (relative_error)),
 
-            if(val_loss < 0.20):
+            if(val_loss < 0.13 or i >=40000):
                 break
             scheduler.step(val_loss)
             if(relative_error>0.01 and i!=0):
@@ -302,7 +303,7 @@ if __name__ == '__main__':
     test_generator.start()
 
     #worker_pool = Pool(processes=num_of_processes)
-    accuracy = objective((14, 256), 0)
+    accuracy = objective((15, 256), 0)
     #worker_pool.map(run, range(num_of_processes))
 
 

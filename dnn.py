@@ -27,18 +27,17 @@ def objective(params, GENERATOR_ID):
         def __init__(self, NumChannels): 
             super(ResBlock, self).__init__()
             self.conv0 = nn.Conv3d(NumChannels, NumChannels, 3, stride=1, padding=1)
-            self.bn0 = nn.BatchNorm3d(NumChannels)
+            #self.bn0 = nn.BatchNorm3d(NumChannels)
             self.conv1 = nn.Conv3d(NumChannels, NumChannels, 3, stride=1, padding=1)
-            self.bn1 = nn.BatchNorm3d(NumChannels)
+            #self.bn1 = nn.BatchNorm3d(NumChannels)
 
         def forward(self, x):
-            y = self.bn0(x)
-            y = F.relu(y)
-            y = self.conv0(y)
-            y = self.bn1(y)
-            y = F.relu(y)
+            #y = self.bn0(x)
+            y = self.conv0(x)
+            #y = self.bn1(y)
+            y = F.elu(y)
             y = self.conv1(y)
-            return torch.add(y, x)
+            return F.elu(torch.add(y, x))
 
 
     class ResNet(nn.Module):
@@ -54,19 +53,19 @@ def objective(params, GENERATOR_ID):
             #self.norm2 = nn.BatchNorm3d(128)
             #self.conv22 = nn.Conv3d(128, 128, 3, stride=1, padding=1)
             self.conv3 = nn.Conv3d(128, 192, 3, stride=2, padding=1)
-            self.norm3 = nn.BatchNorm3d(192)
+            #self.norm3 = nn.BatchNorm3d(192)
             #self.conv33 = nn.Conv3d(192, 192, 3, stride=1, padding=1)
             self.conv4 = nn.Conv3d(192, 256, 3, stride=1)
             #self.norm4 = nn.BatchNorm3d(width)
             #self.conv5 = nn.Conv3d(width, width, 3, stride=1)
             self.fc1 = nn.Linear(width, width)
             self.fc2 = nn.Linear(width, 2)
-            self.norm = nn.BatchNorm1d(width)
+            #self.norm = nn.BatchNorm1d(width)
 
 
             self.block0 = self.build_layer(1, 64)
-            self.block1 = self.build_layer(2, 96)
-            self.block2 = self.build_layer(4, 128)
+            self.block1 = self.build_layer(1, 96)
+            self.block2 = self.build_layer(1, 128)
 
         def build_layer(self, NumLayers, NumChannels):
             layers = []
@@ -79,30 +78,34 @@ def objective(params, GENERATOR_ID):
             x = x.view(-1, 1, 25, 25, 25)
         
             x = self.conv0(x)
+            x = F.elu(x)
 
             x = self.block0(x)
 
             x = self.conv1(x)
+            x = F.elu(x)
 
             x = self.block1(x)
 
             x = self.conv2(x)
+            x = F.elu(x)
             
             #x = F.relu(self.norm2(x))
 
             x = self.block2(x)
          
             x = self.conv3(x)
-            x = F.relu(self.norm3(x))
+            x = F.elu(x)
+            #x = F.relu(self.norm3(x))
 
             x = self.conv4(x)
+            x = F.elu(x)
 
             x = x.view(-1, width)
-            x = self.norm(x)
-            x = F.relu(x)
+            #x = self.norm(x)
             x = self.fc1(x)
-            x = self.norm(x)
-            x = F.relu(x)
+            #x = self.norm(x)
+            x = F.elu(x)
             x = self.fc2(x)
             #x = F.softmax(x)
             return x
@@ -157,6 +160,7 @@ def objective(params, GENERATOR_ID):
     for train_data, val_data in itertools.izip(train_loader, val_loader):
         #inputs, labels = data
         #ECAL, HCAL, labels = Variable(inputs[0].cuda()), Variable(inputs[1].cuda()), Variable(labels.cuda())
+        net.train()
         ECAL, _, labels = train_data
         ECAL = np.swapaxes(ECAL,1,3)
         ECAL, labels = Variable(from_numpy(ECAL).cuda()), Variable(from_numpy(labels).long().cuda())
@@ -169,6 +173,7 @@ def objective(params, GENERATOR_ID):
 
 
 
+        net.eval()
         ECAL, _, labels = val_data
         ECAL = np.swapaxes(ECAL,1,3)
         ECAL, labels = Variable(from_numpy(ECAL).cuda()), Variable(from_numpy(labels).long().cuda())

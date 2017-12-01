@@ -72,9 +72,9 @@ def objective(params, GENERATOR_ID):
             self.selu4 = nn.SELU()
             self.selu5 = nn.SELU()
             self.selu6 = nn.SELU()
-            self.block0 = self.build_layer(1, 32)
-            self.block1 = self.build_layer(1, 64)
-            self.block2 = self.build_layer(1, 96)
+            self.block0 = self.build_layer(4, 32)
+            self.block1 = self.build_layer(4, 64)
+            self.block2 = self.build_layer(4, 96)
 
         def build_layer(self, NumLayers, NumChannels):
             layers = []
@@ -139,7 +139,7 @@ def objective(params, GENERATOR_ID):
     criterion = nn.CrossEntropyLoss().cuda()
     #optimizer = optim.SGD(net.parameters(), lr=learning_rate, weight_decay=decay_rate, momentum=0.9)
     optimizer = optim.Adam(net.parameters(), lr=learning_rate, weight_decay=decay_rate)
-    scheduler = ReduceLROnPlateau(optimizer, 'min', verbose=True, min_lr=1.0e-4, patience=100, factor=0.1, threshold = 1.0e-4)
+    scheduler = ReduceLROnPlateau(optimizer, 'min', verbose=True, min_lr=1.0e-3, patience=10, factor=0.1, threshold = 1.0e-4)
 
 
     loss_history = []
@@ -204,7 +204,7 @@ def objective(params, GENERATOR_ID):
             print('    relative error: %.10f' %
                     (relative_error)),
 
-            if(val_loss < 0.15):
+            if(val_loss < 0.10):
                 break
             scheduler.step(val_loss)
             if(relative_error>0.01 and i!=0):
@@ -321,7 +321,7 @@ if __name__ == '__main__':
     test_generator.start()
 
     #worker_pool = Pool(processes=num_of_processes)
-    accuracy = objective((15, 192), 0)
+    accuracy = objective((18, 192), 0)
     #worker_pool.map(run, range(num_of_processes))
 
 
